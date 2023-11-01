@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/viper"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -15,13 +16,47 @@ func main() {
 		fmt.Println("Ошибка при загрузке токена:", err)
 		return
 	}
-	fmt.Println("Введите строку:")
+	fmt.Println("Для диалога с ботом введите контекст в начале предложения. А если вам нужен только один ответ от него, просто напишите ваше обращение.")
 	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
 
 	viper.AddConfigPath("/env/token.yaml")
-
 	client := openai.NewClient(token)
+	messages := make([]openai.ChatCompletionMessage, 0)
+	input, _ := reader.ReadString('\n')
+	firstWord := strings.ToLower(strings.TrimSpace(input))
+
+	if firstWord == "контекст" {
+		for {
+			fmt.Print("Введите свое обращение: ")
+			text, _ := reader.ReadString('\n')
+			text = strings.Replace(text, "\n", "", -1)
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:    openai.ChatMessageRoleUser,
+				Content: text,
+			})
+
+			resp, err := client.CreateChatCompletion(
+				context.Background(),
+				openai.ChatCompletionRequest{
+					Model:    openai.GPT3Dot5Turbo,
+					Messages: messages,
+				},
+			)
+
+			if err != nil {
+				fmt.Printf("ChatCompletion error: %v\n", err)
+				continue
+			}
+
+			content := resp.Choices[0].Message.Content
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:    openai.ChatMessageRoleAssistant,
+				Content: content,
+			})
+			fmt.Println(content)
+		}
+
+	}
 	resp, err := client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
@@ -44,7 +79,8 @@ func main() {
 }
 
 func loadToken() (string, error) {
-	viper.SetConfigFile("env/token.yaml") // Укажите путь к файлу token.yaml
+	viper.SetConfigFile("env/token.yaml")
+
 	if err := viper.ReadInConfig(); err != nil {
 		return "", err
 	}
